@@ -1,0 +1,7 @@
+# Laravel & React ignores
+/node_modules/
+/vendor/
+.env
+.DS_Store
+/public/storage
+/storage/
