@@ -1,8 +1,16 @@
-# Laravel & React ignores
-/node_modules/
-/vendor/
+# Backend (Laravel)
+vendor/
+storage/
 .env
+
+# Node modules (for frontend and backend)
+node_modules/
+
+# Build outputs
+dist/
+public/storage/
+
+# Logs & system files
 .DS_Store
-/public/storage
-/storage/
-frontend/node_modules/
+*.log
+.vscode/
