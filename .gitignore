@@ -14,3 +14,6 @@ public/storage/
 .DS_Store
 *.log
 .vscode/
+
+# add venv folder
+pdf-extractor/venv/
