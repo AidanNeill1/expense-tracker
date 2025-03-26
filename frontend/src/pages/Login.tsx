@@ -1,12 +1,17 @@
 import { useState } from 'react';
 import axios from '../services/api';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import logo from '../assets/mahi-logo-sm.png'; 
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [form, setForm] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState('');
+
+  // Get the message and redirect path from location state
+  const message = location.state?.message;
+  const from = location.state?.from || '/home';
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -15,8 +20,16 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await axios.post('/login', form);
-      navigate('/home');
+      const response = await axios.post('/login', form);
+      
+      // Store the token in localStorage
+      if (response.data.token) {
+        localStorage.setItem('token', response.data.token);
+        // Navigate to the original destination or home
+        navigate(from);
+      } else {
+        throw new Error('No token received from server');
+      }
     } catch (err: any) {
       setErrors(err.response?.data?.message || 'Login failed');
     }
@@ -26,8 +39,14 @@ export default function Login() {
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex items-center justify-center px-4">
       <div className="w-full max-w-sm p-6 bg-white rounded-lg shadow-lg dark:bg-gray-800">
         <div className="flex flex-col items-center justify-center mb-6">
-            <img src={logo} alt="Mahi Logo" className="h-30 mb-2" />
+          <img src={logo} alt="Mahi Logo" className="h-30 mb-2" />
         </div>
+
+        {message && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 text-blue-700 rounded">
+            {message}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
@@ -76,7 +95,7 @@ export default function Login() {
         </form>
 
         <p className="mt-6 text-center text-sm text-gray-600 dark:text-gray-400">
-          Don’t have an account?{' '}
+          Don't have an account?{' '}
           <Link to="/register" className="font-medium text-blue-600 hover:underline">
             Register
           </Link>
