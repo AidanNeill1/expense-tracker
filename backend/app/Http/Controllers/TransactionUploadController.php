@@ -22,11 +22,14 @@ class TransactionUploadController extends Controller
         // Calculate file hash to prevent duplicates
         $hash = md5_file($localPath);
 
-        // Check for duplicate upload
-        if (PdfUpload::where('hash', $hash)->exists()) {
+        // Check for duplicate upload for the current user only
+        if (PdfUpload::where('hash', $hash)
+            ->where('user_id', auth()->id())
+            ->exists()
+        ) {
             Storage::delete($path);
             return response()->json([
-                'message' => 'This statement has already been uploaded',
+                'message' => 'You have already uploaded this statement',
                 'error' => 'duplicate_statement'
             ], 400);
         }
