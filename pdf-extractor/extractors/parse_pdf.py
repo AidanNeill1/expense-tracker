@@ -1,6 +1,7 @@
 import pdfplumber
 import re
 from decimal import Decimal
+import decimal
 
 
 def clean_amount(amount_str):
@@ -13,8 +14,14 @@ def clean_amount(amount_str):
     # Remove any commas in numbers
     cleaned = cleaned.replace(",", "")
     try:
-        return float(cleaned)
-    except ValueError:
+        # Convert to Decimal first for proper rounding
+        amount = Decimal(cleaned)
+        # If it's very close to zero (like -0.0), return 0
+        if abs(amount) < Decimal("0.01"):
+            return 0.0
+        # Round to 2 decimal places and convert to float
+        return float(round(amount, 2))
+    except (ValueError, decimal.InvalidOperation):
         return 0.0
 
 
@@ -69,41 +76,31 @@ def parse_transaction_line(line, next_line=None):
     # Handle special transaction types
     if "Transfer" in middle:
         tx_type = "Transfer"
-        # Extract transfer details from the first line
-        transfer_patterns = [
-            r"(Inter account transfer (?:to|from) account.*?)(?=\s*$)",
-            r"(Discovery Bank account.*?)(?=\s*$)",
-            r"(Transfer to.*?)(?=\s*$)",
-        ]
+        # Keep the original line content for transfers
+        details = middle.replace("Transfer", "").strip()
 
-        # Try to find transfer details in the first line
-        transfer_details = None
-        for pattern in transfer_patterns:
-            match = re.search(pattern, middle)
-            if match:
-                transfer_details = match.group(1)
-                break
+        # If we have a next line that's a transfer continuation
+        if next_line:
+            next_line_content = re.sub(
+                r"-?\s*R?\d[\d,\s]*\.\d{2}$", "", next_line
+            ).strip()
+            # Only append if it adds meaningful information
+            if next_line_content and not next_line_content.lower() in [
+                "transfere",
+                "transfe",
+                "transfer",
+                "invesr",
+            ]:
+                if details:
+                    details = f"{details} {next_line_content}"
+                else:
+                    details = next_line_content
 
-        # Handle the details based on whether we have a next line
-        if transfer_details:
-            details = transfer_details
-            # If we have a next line, append its content (except amount)
-            if next_line:
-                next_line_content = re.sub(
-                    r"-?\s*R?\d[\d,\s]*\.\d{2}$", "", next_line
-                ).strip()
-                if next_line_content:
-                    details = f"{details}\n{next_line_content}"
-        else:
-            # No pattern match found, use the middle content
-            details = middle.replace("Transfer", "").strip()
-            # If we have a next line, append its content (except amount)
-            if next_line:
-                next_line_content = re.sub(
-                    r"-?\s*R?\d[\d,\s]*\.\d{2}$", "", next_line
-                ).strip()
-                if next_line_content:
-                    details = f"{details}\n{next_line_content}"
+            # If we still don't have meaningful details, try to extract from the amount
+            if not details or details.isdigit():
+                # For transfers, negative amount means "to", positive means "from"
+                direction = "to" if amount < 0 else "from"
+                details = f"Transfer {direction} account"
 
     elif "EFT" in middle:
         tx_type = "EFT"
@@ -120,11 +117,19 @@ def parse_transaction_line(line, next_line=None):
     elif "Debit order" in middle:
         tx_type = "Debit order"
         details = middle.replace("Debit order", "").strip()
+    elif "Declined" in middle:
+        tx_type = "Declined"
+        details = middle.replace("Declined", "").strip()
     else:
         # For other transactions, try to split on first space
         parts = middle.split(" ", 1)
         tx_type = parts[0]
         details = parts[1] if len(parts) > 1 else ""
+
+    # Clean up details
+    details = re.sub(r"\s+", " ", details).strip()
+    if not details:
+        details = tx_type  # Use transaction type if no details available
 
     return {
         "date": date,
@@ -163,11 +168,16 @@ def extract_table_from_pdf(path):
                 transaction = parse_transaction_line(line, next_line)
                 if transaction:
                     transactions.append(transaction)
-                    # Skip the next line if it was part of this transaction
-                    if next_line and any(
-                        word in next_line for word in ["Transfere", "Transfe", "Invesr"]
+                    # Only skip next line if it was clearly part of this transaction
+                    # (contains transfer-related words but no date)
+                    if next_line and not re.match(
+                        r"\d{1,2}\s+[A-Za-z]{3}\s+20\d{2}", next_line
                     ):
-                        i += 1
+                        if any(
+                            word.lower() in next_line.lower()
+                            for word in ["Transfere", "Transfe", "Transfer", "Invesr"]
+                        ):
+                            i += 1
                 i += 1
 
     return transactions
